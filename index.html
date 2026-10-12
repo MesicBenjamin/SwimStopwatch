@@ -22,6 +22,11 @@
   h2 { font-size: 15px; margin: 24px 0 10px; color: #cbd5e1; }
   .sub { color: #94a3b8; font-size: 12px; margin-bottom: 12px; }
 
+  #menuBtn { min-height: 40px; min-width: 44px; padding: 6px; font-size: 20px; line-height: 1; flex-shrink: 0; }
+  #menuBtn.open { background: #3b82f6; }
+  #sessionBadge { max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #menu .card { margin-bottom: 12px; border: 1px solid #334155; }
+
   .tabs { display: flex; gap: 2px; margin-bottom: 16px; border-bottom: 1px solid #334155; }
   .tab-btn { flex: 1; background: none; color: #94a3b8; padding: 12px 4px; border-bottom: 2px solid transparent; border-radius: 0; }
   .tab-btn.active { color: #e2e8f0; border-bottom-color: #3b82f6; }
@@ -75,13 +80,12 @@
   .bar > div.best { background: #22c55e; }
   .x { background: none; color: #94a3b8; min-height: 32px; padding: 0 8px; font-size: 18px; }
 
-  /* Stopwatch tab: session + start/stop buttons pinned to the bottom of the
-     screen. The tab gets matching bottom padding so the last swimmer row can
-     scroll clear of the bar. */
-  #tab-watch { padding-bottom: 150px; }
+  /* Stopwatch tab: start/stop buttons pinned to the bottom of the screen.
+     The tab gets matching bottom padding so the last swimmer row can scroll
+     clear of the bar. */
+  #tab-watch { padding-bottom: 80px; }
   .bottombar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: #0f172a; border-top: 1px solid #334155;
                padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); }
-  .bottombar .card { padding: 8px 12px; margin-bottom: 8px; }
   .bottombar > :last-child { margin-bottom: 0; }
 
   #toast { position: fixed; left: 16px; right: 16px; top: calc(16px + env(safe-area-inset-top)); background: #334155; color: #e2e8f0;
@@ -90,7 +94,12 @@
 </head>
 <body>
 <div class="header-sticky">
-  <h1>SwimStopwatch</h1>
+  <div class="flex" style="margin-bottom:6px;">
+    <h1 class="grow" style="margin:0;">SwimStopwatch</h1>
+    <div class="label" id="sessionBadge"></div>
+    <button class="secondary" id="menuBtn" onclick="toggleMenu()" aria-label="Menu">☰</button>
+  </div>
+  <div id="menu" hidden></div>
   <div class="tabs">
     <button class="tab-btn" id="tabbtn-watch" onclick="showTab('watch')">Stopwatch</button>
     <button class="tab-btn" id="tabbtn-swimmers" onclick="showTab('swimmers')">Swimmers</button>
@@ -211,6 +220,7 @@ function download(filename, text, type) {
 
 function showTab(name) {
   currentTab = name;
+  menuOpen = false;
   for (const t of ['watch', 'swimmers', 'history']) {
     $('tab-' + t).hidden = t !== name;
     $('tabbtn-' + t).classList.toggle('active', t === name);
@@ -218,7 +228,32 @@ function showTab(name) {
   render();
 }
 
+// ---- menu (the three-line button in the header) - holds the session controls ----
+let menuOpen = false;
+
+function toggleMenu() {
+  menuOpen = !menuOpen;
+  renderMenu();
+}
+
+function renderMenu() {
+  const s = activeSession();
+  $('sessionBadge').textContent = s ? s.name : '';
+  $('menuBtn').classList.toggle('open', menuOpen);
+  const menu = $('menu');
+  menu.hidden = !menuOpen;
+  menu.replaceChildren();
+  if (!menuOpen) return;
+  menu.append(h('div', { class: 'card flex' },
+    h('div', { class: 'grow' },
+      h('div', { class: 'label' }, 'Session'),
+      h('div', { class: 'strong' }, s ? s.name : 'None - one starts on the first tap')),
+    h('button', { class: 'secondary small', onclick: newSession }, 'New'),
+    s && h('button', { class: 'secondary small', onclick: endSession }, 'End')));
+}
+
 function render() {
+  renderMenu();
   if (currentTab === 'watch') renderWatch();
   else if (currentTab === 'swimmers') renderSwimmers();
   else renderHistory();
@@ -248,6 +283,7 @@ function newSession() {
   if (name === null) return;
   if (!okToDropRunning()) return;
   createSession(name.trim() || timestampName());
+  menuOpen = false;
   save();
   render();
 }
@@ -255,6 +291,7 @@ function newSession() {
 function endSession() {
   if (!okToDropRunning()) return;
   state.activeSessionId = null;
+  menuOpen = false;
   save();
   render();
 }
@@ -355,16 +392,6 @@ function renderWatch() {
   root.replaceChildren();
   const s = activeSession();
 
-  // Session and the start/stop buttons live in a bar pinned to the bottom of
-  // the screen, within thumb reach however long the swimmer list is.
-  const bar = h('div', { class: 'bottombar' },
-    h('div', { class: 'card flex' },
-      h('div', { class: 'grow' },
-        h('div', { class: 'label' }, 'Session'),
-        h('div', { class: 'strong' }, s ? s.name : 'None - one starts on the first tap')),
-      h('button', { class: 'secondary small', onclick: newSession }, 'New'),
-      s && h('button', { class: 'secondary small', onclick: endSession }, 'End')));
-
   const shownGroups = state.groups.filter(g => !g.hidden);
   if (shownGroups.length) {
     root.append(h('div', { class: 'chips' },
@@ -377,13 +404,14 @@ function renderWatch() {
         ? 'No swimmers selected. Pick a group above, or tick swimmers on the Swimmers tab.'
         : 'Add your swimmers first, then tick the ones you want to time.'),
       h('button', { onclick: () => showTab('swimmers') }, 'Go to Swimmers')));
-    root.append(bar);
     return;
   }
 
   state.selected = state.selected.filter(id => state.deck.includes(id));
   const nSel = state.selected.length;
-  bar.append(h('div', { class: 'btnrow' },
+  // Start/stop buttons live in a bar pinned to the bottom of the screen,
+  // within thumb reach however long the swimmer list is.
+  const bar = h('div', { class: 'bottombar' }, h('div', { class: 'btnrow' },
     h('button', { onclick: startAll }, 'Start all'),
     h('button', { style: nSel ? '' : 'opacity:0.5;', onclick: startSelected }, nSel ? `Start selected (${nSel})` : 'Start selected'),
     h('button', { class: 'secondary', onclick: stopAll }, 'Stop all')));
