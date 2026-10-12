@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SwimStopwatch">
+<title>SwimStopwatch</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg">
+<style>
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { font-family: -apple-system, system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0;
+         padding: 0 16px calc(24px + env(safe-area-inset-bottom)); -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+
+  .header-sticky { position: sticky; top: 0; z-index: 10; background: #0f172a; margin: 0 -16px; padding: calc(14px + env(safe-area-inset-top)) 16px 0; }
+  h1 { font-size: 19px; margin: 0 0 6px; }
+  h2 { font-size: 15px; margin: 24px 0 10px; color: #cbd5e1; }
+  .sub { color: #94a3b8; font-size: 12px; margin-bottom: 12px; }
+
+  .tabs { display: flex; gap: 2px; margin-bottom: 16px; border-bottom: 1px solid #334155; }
+  .tab-btn { flex: 1; background: none; color: #94a3b8; padding: 12px 4px; border-bottom: 2px solid transparent; border-radius: 0; }
+  .tab-btn.active { color: #e2e8f0; border-bottom-color: #3b82f6; }
+
+  button { background: #3b82f6; color: white; border: none; padding: 10px 14px; border-radius: 8px; cursor: pointer; font-size: 14px; min-height: 44px; font-family: inherit; }
+  button:active { filter: brightness(0.85); }
+  button.secondary { background: #475569; }
+  button.danger { background: #dc2626; }
+  button.small { min-height: 36px; padding: 6px 10px; font-size: 13px; }
+
+  input[type=text] { background: #0f172a; color: #e2e8f0; border: 1px solid #334155; border-radius: 8px; padding: 10px; font-size: 16px; width: 100%; min-width: 0; font-family: inherit; }
+  input[type=color] { width: 40px; height: 40px; border: none; border-radius: 8px; background: none; padding: 0; flex-shrink: 0; }
+  input[type=checkbox] { width: 22px; height: 22px; flex-shrink: 0; }
+
+  .card { background: #1e293b; padding: 12px; border-radius: 10px; margin-bottom: 10px; }
+  .flex { display: flex; align-items: center; gap: 10px; }
+  .wrap { flex-wrap: wrap; }
+  .grow { flex: 1; min-width: 0; }
+  .label { font-size: 12px; color: #94a3b8; }
+  .strong { font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
+  .swatch { width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0; }
+  .btnrow { display: flex; gap: 10px; margin-bottom: 12px; }
+  .btnrow > button { flex: 1; }
+
+  .chips { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 12px; padding-bottom: 2px; }
+  .chip { background: #334155; white-space: nowrap; min-height: 36px; padding: 6px 12px; font-size: 13px; border-radius: 18px; }
+
+  /* Stopwatch rows - the whole card is the tap target */
+  .lap { cursor: pointer; user-select: none; -webkit-user-select: none; border: 1px solid transparent; min-height: 68px; }
+  .lap.running { background: #14532d; border-color: #22c55e; }
+  .time { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+  .lap:not(.running) .time { font-size: 13px; font-weight: 400; color: #94a3b8; }
+
+  .bar { flex: 1; background: #0f172a; border-radius: 4px; overflow: hidden; height: 18px; }
+  .bar > div { height: 100%; background: #3b82f6; }
+  .bar > div.best { background: #22c55e; }
+  .x { background: none; color: #94a3b8; min-height: 32px; padding: 0 8px; font-size: 18px; }
+
+  #toast { position: fixed; left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); background: #334155; color: #e2e8f0;
+           padding: 12px; border-radius: 10px; font-size: 14px; text-align: center; z-index: 20; }
+</style>
+</head>
+<body>
+<div class="header-sticky">
+  <h1>SwimStopwatch</h1>
+  <div class="tabs">
+    <button class="tab-btn" id="tabbtn-watch" onclick="showTab('watch')">Stopwatch</button>
+    <button class="tab-btn" id="tabbtn-swimmers" onclick="showTab('swimmers')">Swimmers</button>
+    <button class="tab-btn" id="tabbtn-history" onclick="showTab('history')">History</button>
+  </div>
+</div>
+
+<div id="tab-watch"></div>
+<div id="tab-swimmers" hidden></div>
+<div id="tab-history" hidden></div>
+<div id="toast" hidden></div>
+
+<script>
+// Everything lives in this one file and in the phone's own localStorage -
+// no server, no network. All names are inserted as text nodes (never as
+// HTML), and swimmers are tracked by id, so duplicate or odd names are safe.
+const KEY = 'swimstopwatch.v1';
+const PALETTE = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#06b6d4', '#ec4899', '#eab308'];
+const $ = id => document.getElementById(id);
+
+function emptyState() {
+  return { nextId: 1, swimmers: [], groups: [], sessions: [], activeSessionId: null,
+           deck: [],       // swimmer ids currently shown on the Stopwatch tab, in order
+           running: {} };  // swimmer id -> Date.now() when their timer was started
+}
+
+function loadState() {
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY));
+    if (s && Array.isArray(s.swimmers)) return Object.assign(emptyState(), s);
+  } catch (e) {}
+  return emptyState();
+}
+
+let state = loadState();
+let currentTab = 'watch';
+let openSessionId = null;
+let swimmerSearch = '';
+
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(state)); }
+  catch (e) { toast('Could not save - phone storage is full or blocked.'); }
+}
+
+// ---- helpers ----
+function h(tag, props, ...kids) {
+  const el = document.createElement(tag);
+  for (const k in (props || {})) {
+    const v = props[k];
+    if (v == null || v === false) continue;
+    if (k === 'class') el.className = v;
+    else if (k === 'style') el.style.cssText = v;
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else el[k] = v;
+  }
+  for (const kid of kids.flat()) {
+    if (kid == null || kid === false) continue;
+    el.append(kid.nodeType ? kid : String(kid));
+  }
+  return el;
+}
+
+const pad = n => String(n).padStart(2, '0');
+
+function fmt(ms) {
+  const cs = Math.max(0, Math.floor(ms / 10));
+  return `${Math.floor(cs / 6000)}:${pad(Math.floor(cs / 100) % 60)}.${pad(cs % 100)}`;
+}
+
+function timestampName(d = new Date()) {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+let toastTimer;
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.hidden = true, 2500);
+}
+
+const swimmerById = id => state.swimmers.find(s => s.id === id);
+const activeSession = () => state.sessions.find(s => s.id === state.activeSessionId);
+const swatch = color => h('div', { class: 'swatch', style: `background:${color}` });
+
+// On phones, hand the file to the share sheet (save to Files, AirDrop, mail);
+// elsewhere fall back to a normal download.
+function download(filename, text, type) {
+  const file = new File([text], filename, { type });
+  if (matchMedia('(pointer: coarse)').matches && navigator.canShare && navigator.canShare({ files: [file] })) {
+    navigator.share({ files: [file] }).catch(() => {});
+    return;
+  }
+  const a = h('a', { href: URL.createObjectURL(file), download: filename });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function showTab(name) {
+  currentTab = name;
+  for (const t of ['watch', 'swimmers', 'history']) {
+    $('tab-' + t).hidden = t !== name;
+    $('tabbtn-' + t).classList.toggle('active', t === name);
+  }
+  render();
+}
+
+function render() {
+  if (currentTab === 'watch') renderWatch();
+  else if (currentTab === 'swimmers') renderSwimmers();
+  else renderHistory();
+  syncWakeLock();
+}
+
+// ---- sessions ----
+function createSession(name) {
+  const s = { id: state.nextId++, name, startedAt: Date.now(), laps: [] };
+  state.sessions.push(s);
+  state.activeSessionId = s.id;
+  return s;
+}
+
+// Timers running at the moment a session changes would otherwise be logged
+// into the wrong session, so they're dropped (after asking).
+function okToDropRunning() {
+  const n = Object.keys(state.running).length;
+  if (n === 0) return true;
+  if (!confirm(`${n} timer${n === 1 ? ' is' : 's are'} still running and will be discarded. Continue?`)) return false;
+  state.running = {};
+  return true;
+}
+
+function newSession() {
+  const name = prompt('Session name', timestampName());
+  if (name === null) return;
+  if (!okToDropRunning()) return;
+  createSession(name.trim() || timestampName());
+  save();
+  render();
+}
+
+function endSession() {
+  if (!okToDropRunning()) return;
+  state.activeSessionId = null;
+  save();
+  render();
+}
+
+// ---- stopwatch ----
+// A lap is never thrown away for lack of a session: one is created on demand.
+function logLap(id, now) {
+  const start = state.running[id];
+  const sw = swimmerById(id);
+  if (start === undefined || !sw) return;
+  const s = activeSession() || createSession(timestampName());
+  s.laps.push({ swimmerId: id, name: sw.name, ms: now - start, at: now });
+}
+
+function tap(id) {
+  const now = Date.now();
+  if (state.running[id] === undefined) {
+    state.running[id] = now;
+  } else {
+    logLap(id, now);
+    delete state.running[id];
+  }
+  save();
+  render();
+}
+
+// Logs the lap and immediately starts the next one - for continuous swims.
+function split(id) {
+  const now = Date.now();
+  logLap(id, now);
+  state.running[id] = now;
+  save();
+  render();
+}
+
+function startAll() {
+  const now = Date.now();
+  for (const id of state.deck) if (state.running[id] === undefined) state.running[id] = now;
+  save();
+  render();
+}
+
+function stopAll() {
+  const now = Date.now();
+  for (const id of state.deck) {
+    if (state.running[id] === undefined) continue;
+    logLap(id, now);
+    delete state.running[id];
+  }
+  save();
+  render();
+}
+
+function setDeck(ids) {
+  state.deck = ids.filter(id => swimmerById(id));
+  for (const id of Object.keys(state.running)) {
+    if (!state.deck.includes(+id)) delete state.running[id];
+  }
+}
+
+function applyGroup(groupId) {
+  const g = state.groups.find(g => g.id === groupId);
+  if (!g) return;
+  const dropped = Object.keys(state.running).filter(id => !g.swimmerIds.includes(+id)).length;
+  if (dropped && !confirm(`${dropped} running timer${dropped === 1 ? '' : 's'} for swimmers outside this group will be discarded. Continue?`)) return;
+  setDeck(g.swimmerIds.slice());
+  save();
+  showTab('watch');
+}
+
+function renderWatch() {
+  const root = $('tab-watch');
+  root.replaceChildren();
+  const s = activeSession();
+
+  root.append(h('div', { class: 'card flex' },
+    h('div', { class: 'grow' },
+      h('div', { class: 'label' }, 'Session'),
+      h('div', { class: 'strong' }, s ? s.name : 'None - one starts on the first tap')),
+    h('button', { class: 'secondary small', onclick: newSession }, 'New'),
+    s && h('button', { class: 'secondary small', onclick: endSession }, 'End')));
+
+  if (state.groups.length) {
+    root.append(h('div', { class: 'chips' },
+      state.groups.map(g => h('button', { class: 'chip', onclick: () => applyGroup(g.id) }, g.name))));
+  }
+
+  if (state.deck.length === 0) {
+    root.append(h('div', { class: 'card' },
+      h('div', { class: 'sub' }, state.swimmers.length
+        ? 'No swimmers selected. Pick a group above, or tick swimmers on the Swimmers tab.'
+        : 'Add your swimmers first, then tick the ones you want to time.'),
+      h('button', { onclick: () => showTab('swimmers') }, 'Go to Swimmers')));
+    return;
+  }
+
+  root.append(h('div', { class: 'btnrow' },
+    h('button', { onclick: startAll }, 'Start all'),
+    h('button', { class: 'secondary', onclick: stopAll }, 'Stop all')));
+
+  for (const id of state.deck) {
+    const sw = swimmerById(id);
+    if (!sw) continue;
+    const run = state.running[id];
+    const laps = s ? s.laps.filter(l => l.swimmerId === id) : [];
+    const last = laps.length ? ` · last ${fmt(laps[laps.length - 1].ms)}` : '';
+    const time = h('div', { class: 'time' }, run !== undefined ? fmt(Date.now() - run) : 'Tap to start');
+    if (run !== undefined) time.dataset.run = run;
+    root.append(h('div', { class: 'card flex lap' + (run !== undefined ? ' running' : ''), onclick: () => tap(id) },
+      swatch(sw.color),
+      h('div', { class: 'grow' },
+        h('div', { class: 'strong' }, sw.name),
+        h('div', { class: 'label' }, `${laps.length} lap${laps.length === 1 ? '' : 's'}${last}`)),
+      time,
+      run !== undefined && h('button', { class: 'small', onclick: e => { e.stopPropagation(); split(id); } }, 'Split')));
+  }
+  root.append(h('div', { class: 'sub' }, 'Tap a swimmer to start, tap again to stop and log the lap. Split logs a lap and keeps timing.'));
+}
+
+// Running times are derived from the stored start timestamp, so they stay
+// correct across a reload, a locked screen, or the browser pausing this timer.
+setInterval(() => {
+  const now = Date.now();
+  for (const el of document.querySelectorAll('[data-run]')) el.textContent = fmt(now - el.dataset.run);
+}, 50);
+
+// ---- swimmers & groups ----
+function addSwimmer() {
+  const name = $('newName').value.trim();
+  if (!name) { toast('Enter a name first.'); return; }
+  const color = $('newColor').value;
+  const sw = { id: state.nextId++, name, color };
+  state.swimmers.push(sw);
+  state.deck.push(sw.id);
+  save();
+  render();
+  $('newName').focus();
+}
+
+function renameSwimmer(sw) {
+  const name = prompt('Swimmer name', sw.name);
+  if (name === null || !name.trim()) return;
+  sw.name = name.trim();
+  save();
+  render();
+}
+
+function deleteSwimmer(sw) {
+  if (!confirm(`Delete ${sw.name}? Laps already logged stay in History.`)) return;
+  state.swimmers = state.swimmers.filter(x => x.id !== sw.id);
+  state.deck = state.deck.filter(id => id !== sw.id);
+  delete state.running[sw.id];
+  for (const g of state.groups) g.swimmerIds = g.swimmerIds.filter(id => id !== sw.id);
+  save();
+  render();
+}
+
+function toggleDeck(id, on) {
+  if (on && !state.deck.includes(id)) state.deck.push(id);
+  if (!on) {
+    state.deck = state.deck.filter(x => x !== id);
+    delete state.running[id];
+  }
+  save();
+}
+
+function saveGroup() {
+  const name = $('newGroupName').value.trim();
+  if (!name) { toast('Enter a group name first.'); return; }
+  if (state.deck.length === 0) { toast('Tick at least one swimmer first.'); return; }
+  state.groups.push({ id: state.nextId++, name, swimmerIds: state.deck.slice() });
+  save();
+  render();
+}
+
+function deleteGroup(g) {
+  if (!confirm(`Delete group ${g.name}? The swimmers themselves are kept.`)) return;
+  state.groups = state.groups.filter(x => x.id !== g.id);
+  save();
+  render();
+}
+
+function renderSwimmerList() {
+  const list = $('swimmerList');
+  list.replaceChildren();
+  const q = swimmerSearch.toLowerCase();
+  for (const sw of state.swimmers) {
+    if (!sw.name.toLowerCase().includes(q)) continue;
+    list.append(h('div', { class: 'card flex' },
+      h('input', { type: 'checkbox', checked: state.deck.includes(sw.id), onchange: e => toggleDeck(sw.id, e.target.checked) }),
+      h('input', { type: 'color', value: sw.color, onchange: e => { sw.color = e.target.value; save(); } }),
+      h('div', { class: 'grow strong', onclick: () => renameSwimmer(sw) }, sw.name),
+      h('button', { class: 'x', onclick: () => deleteSwimmer(sw) }, '×')));
+  }
+  if (!list.children.length) {
+    list.append(h('div', { class: 'sub' }, state.swimmers.length ? 'No swimmer matches the search.' : 'No swimmers yet.'));
+  }
+}
+
+function renderSwimmers() {
+  const root = $('tab-swimmers');
+  root.replaceChildren();
+
+  root.append(
+    h('div', { class: 'card flex' },
+      h('input', { type: 'color', id: 'newColor', value: PALETTE[state.swimmers.length % PALETTE.length] }),
+      h('input', { type: 'text', id: 'newName', placeholder: 'Swimmer name', onkeydown: e => { if (e.key === 'Enter') addSwimmer(); } }),
+      h('button', { onclick: addSwimmer }, 'Add')),
+    h('div', { class: 'sub' }, 'Ticked swimmers appear on the Stopwatch tab. Tap a name to rename it.'),
+    h('input', { type: 'text', placeholder: 'Search swimmers...', value: swimmerSearch, style: 'margin-bottom:12px;',
+                 oninput: e => { swimmerSearch = e.target.value; renderSwimmerList(); } }),
+    h('div', { id: 'swimmerList' }),
+    h('button', { class: 'secondary', style: 'width:100%;', onclick: () => { setDeck([]); save(); render(); } }, 'Untick all'),
+
+    h('h2', null, 'Groups'),
+    h('div', { class: 'sub' }, 'Tick swimmers above, name the group and save it - then load the whole group with one tap.'),
+    state.groups.map(g => h('div', { class: 'card' },
+      h('div', { class: 'flex' },
+        h('div', { class: 'grow strong' }, g.name),
+        h('button', { class: 'small', onclick: () => applyGroup(g.id) }, 'Use'),
+        h('button', { class: 'x', onclick: () => deleteGroup(g) }, '×')),
+      h('div', { class: 'label' }, g.swimmerIds.map(id => (swimmerById(id) || {}).name).filter(Boolean).join(', ') || '(empty)'))),
+    h('div', { class: 'card flex' },
+      h('input', { type: 'text', id: 'newGroupName', placeholder: 'Group name, e.g. Team A' }),
+      h('button', { onclick: saveGroup }, 'Save')));
+
+  renderSwimmerList();
+}
+
+// ---- history ----
+const csvCell = v => /[",\n\r]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);
+
+function sessionCsv(s) {
+  const counts = {};
+  const rows = [['session', 'swimmer', 'lap', 'seconds', 'time', 'finished_at']];
+  for (const l of s.laps) {
+    counts[l.swimmerId] = (counts[l.swimmerId] || 0) + 1;
+    const d = new Date(l.at);
+    rows.push([s.name, l.name, counts[l.swimmerId], (l.ms / 1000).toFixed(2), fmt(l.ms),
+               `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`]);
+  }
+  return rows.map(r => r.map(csvCell).join(',')).join('\n') + '\n';
+}
+
+const safeFilename = name => (name.replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'session');
+
+function deleteSession(s) {
+  if (!confirm(`Delete session ${s.name} and its ${s.laps.length} laps?`)) return;
+  if (s.id === state.activeSessionId) {
+    if (!okToDropRunning()) return;
+    state.activeSessionId = null;
+  }
+  state.sessions = state.sessions.filter(x => x.id !== s.id);
+  save();
+  render();
+}
+
+function sessionDetail(s) {
+  const box = h('div', { style: 'margin-top:12px;' });
+  const bySwimmer = new Map();
+  for (const l of s.laps) {
+    if (!bySwimmer.has(l.swimmerId)) bySwimmer.set(l.swimmerId, []);
+    bySwimmer.get(l.swimmerId).push(l);
+  }
+  for (const laps of bySwimmer.values()) {
+    const times = laps.map(l => l.ms);
+    const max = Math.max(...times), best = Math.min(...times);
+    const avg = times.reduce((a, b) => a + b, 0) / times.length;
+    box.append(h('div', { class: 'strong', style: 'margin:10px 0 6px;' }, laps[laps.length - 1].name));
+    laps.forEach((l, i) => box.append(h('div', { class: 'flex', style: 'gap:8px; margin-bottom:4px;' },
+      h('div', { class: 'label', style: 'width:42px; flex-shrink:0;' }, `Lap ${i + 1}`),
+      h('div', { class: 'bar' }, h('div', { class: l.ms === best ? 'best' : '', style: `width:${max > 0 ? Math.round(l.ms / max * 100) : 0}%` })),
+      h('div', { style: 'width:64px; font-size:12px; text-align:right; flex-shrink:0; font-variant-numeric:tabular-nums;' }, fmt(l.ms)),
+      h('button', { class: 'x', onclick: () => {
+        if (!confirm(`Delete lap ${i + 1} (${fmt(l.ms)}) of ${l.name}?`)) return;
+        s.laps.splice(s.laps.indexOf(l), 1);
+        save();
+        render();
+      } }, '×'))));
+    box.append(h('div', { class: 'label' }, `Avg ${fmt(avg)} · Best ${fmt(best)} · ${laps.length} lap${laps.length === 1 ? '' : 's'}`));
+  }
+  if (!s.laps.length) box.append(h('div', { class: 'sub' }, 'No laps logged in this session.'));
+  box.append(h('div', { class: 'btnrow', style: 'margin:14px 0 0;' },
+    h('button', { class: 'secondary', onclick: () => download(safeFilename(s.name) + '.csv', sessionCsv(s), 'text/csv') }, 'Export CSV'),
+    h('button', { class: 'danger', onclick: () => deleteSession(s) }, 'Delete')));
+  return box;
+}
+
+function exportBackup() {
+  const d = new Date();
+  download(`swimstopwatch-backup-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.json`,
+           JSON.stringify(state, null, 1), 'application/json');
+}
+
+async function importBackup(file) {
+  if (!file) return;
+  let data;
+  try { data = JSON.parse(await file.text()); } catch (e) { data = null; }
+  if (!data || !Array.isArray(data.swimmers) || !Array.isArray(data.sessions)) { toast('That is not a SwimStopwatch backup file.'); return; }
+  if (!confirm('Replace everything on this phone with the backup?')) return;
+  state = Object.assign(emptyState(), data);
+  save();
+  render();
+  toast('Backup restored.');
+}
+
+function renderHistory() {
+  const root = $('tab-history');
+  root.replaceChildren();
+  if (!state.sessions.length) root.append(h('div', { class: 'sub' }, 'No sessions yet.'));
+
+  for (const s of state.sessions.slice().reverse()) {
+    const open = s.id === openSessionId;
+    root.append(h('div', { class: 'card' },
+      h('div', { class: 'flex', style: 'cursor:pointer;', onclick: () => { openSessionId = open ? null : s.id; render(); } },
+        h('div', { class: 'grow' },
+          h('div', { class: 'strong' }, s.name),
+          h('div', { class: 'label' }, `${timestampName(new Date(s.startedAt))} · ${s.laps.length} lap${s.laps.length === 1 ? '' : 's'}` +
+                                      (s.id === state.activeSessionId ? ' · active' : ''))),
+        h('div', { class: 'label' }, open ? '▲' : '▼')),
+      open && sessionDetail(s)));
+  }
+
+  const picker = h('input', { type: 'file', accept: '.json,application/json', hidden: true,
+                              onchange: e => importBackup(e.target.files[0]) });
+  root.append(
+    h('h2', null, 'Backup'),
+    h('div', { class: 'sub' }, 'All data is stored only on this phone, in this browser. Export a backup now and then - clearing browser data erases everything.'),
+    h('div', { class: 'btnrow' },
+      h('button', { class: 'secondary', onclick: exportBackup }, 'Export backup'),
+      h('button', { class: 'secondary', onclick: () => picker.click() }, 'Import backup')),
+    picker);
+}
+
+// ---- keep the screen on while timing (needs https; silently skipped otherwise) ----
+let wakeLock = null;
+async function syncWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  const want = Object.keys(state.running).length > 0 && document.visibilityState === 'visible';
+  try {
+    if (want && !wakeLock) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } else if (!want && wakeLock) {
+      await wakeLock.release();
+    }
+  } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') render(); });
+
+// Offline support and protection against storage eviction - both only exist
+// when the page is served over https (or localhost), not from a local file.
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+
+showTab('watch');
+</script>
+</body>
+</html>
