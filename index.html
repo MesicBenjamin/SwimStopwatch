@@ -58,6 +58,8 @@
   #swimmerList { max-height: 286px; overflow-y: auto; -webkit-overflow-scrolling: touch; margin-bottom: 10px; }
   #swimmerList .card { min-height: 64px; }
   #swimmerList .card:last-child { margin-bottom: 0; }
+  #groupList { overflow-y: auto; -webkit-overflow-scrolling: touch; margin-bottom: 10px; }
+  #groupList .card:last-child { margin-bottom: 0; }
 
   /* Enlarged tap area around a tick box inside a tappable row */
   .tick { display: flex; align-items: center; padding: 12px; margin: -12px -2px -12px -12px; }
@@ -134,6 +136,7 @@ let state = seedIfNew(loadState());
 let currentTab = 'watch';
 let openSessionId = null;
 let swimmerSearch = '';
+let groupSearch = '';
 
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(state)); }
@@ -473,6 +476,35 @@ function renderSwimmerList() {
   }
 }
 
+// Group cards vary in height (member names can wrap), so the 4-row limit is
+// measured from the rendered cards instead of being a fixed CSS height.
+const GROUPS_VISIBLE = 4;
+
+function renderGroupList() {
+  const list = $('groupList');
+  list.replaceChildren();
+  const q = groupSearch.toLowerCase();
+  for (const g of state.groups) {
+    const members = g.swimmerIds.map(id => (swimmerById(id) || {}).name).filter(Boolean).join(', ');
+    if (!(g.name + ' ' + members).toLowerCase().includes(q)) continue;
+    list.append(h('div', { class: 'card' },
+      h('div', { class: 'flex' },
+        h('div', { class: 'grow strong' }, g.name),
+        h('button', { class: 'x', onclick: () => deleteGroup(g) }, '×')),
+      h('div', { class: 'label' }, members || '(empty)'),
+      h('label', { class: 'flex label', style: 'margin-top:10px;' },
+        h('input', { type: 'checkbox', checked: !g.hidden, onchange: e => { g.hidden = !e.target.checked; save(); } }),
+        'Show on Stopwatch tab')));
+  }
+  if (!list.children.length) {
+    list.append(h('div', { class: 'sub' }, state.groups.length ? 'No group matches the search.' : 'No groups yet.'));
+  }
+  const cards = list.children;
+  list.style.maxHeight = cards.length > GROUPS_VISIBLE
+    ? (cards[GROUPS_VISIBLE - 1].offsetTop + cards[GROUPS_VISIBLE - 1].offsetHeight - cards[0].offsetTop) + 'px'
+    : '';
+}
+
 function renderSwimmers() {
   const root = $('tab-swimmers');
   root.replaceChildren();
@@ -494,19 +526,15 @@ function renderSwimmers() {
 
     h('h2', null, 'Groups'),
     h('div', { class: 'sub' }, 'Tick swimmers above, name the group and save it - then load the whole group with one tap from the bar on the Stopwatch tab.'),
-    ...state.groups.map(g => h('div', { class: 'card' },
-      h('div', { class: 'flex' },
-        h('div', { class: 'grow strong' }, g.name),
-        h('button', { class: 'x', onclick: () => deleteGroup(g) }, '×')),
-      h('div', { class: 'label' }, g.swimmerIds.map(id => (swimmerById(id) || {}).name).filter(Boolean).join(', ') || '(empty)'),
-      h('label', { class: 'flex label', style: 'margin-top:10px;' },
-        h('input', { type: 'checkbox', checked: !g.hidden, onchange: e => { g.hidden = !e.target.checked; save(); } }),
-        'Show on Stopwatch tab'))),
+    h('input', { type: 'text', placeholder: 'Search groups...', value: groupSearch, style: 'margin-bottom:12px;',
+                 oninput: e => { groupSearch = e.target.value; renderGroupList(); } }),
+    h('div', { id: 'groupList' }),
     h('div', { class: 'card flex' },
       h('input', { type: 'text', id: 'newGroupName', placeholder: 'Group name, e.g. Team A' }),
       h('button', { onclick: saveGroup }, 'Save')));
 
   renderSwimmerList();
+  renderGroupList();
 }
 
 // ---- history ----
