@@ -49,7 +49,10 @@
   /* Extra room below the group buttons so the horizontal scroll bar sits
      under them instead of across the names. */
   .chips { display: flex; gap: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 8px; padding-bottom: 16px; }
-  .chip { background: #334155; white-space: nowrap; flex-shrink: 0; min-height: 44px; padding: 8px 16px; font-size: 14px; border-radius: 22px; }
+  .chip { background: #334155; white-space: nowrap; flex-shrink: 0; min-height: 44px; padding: 8px 16px; font-size: 14px; border-radius: 22px;
+          border: 1px solid transparent; transition: background 0.15s, border-color 0.15s, transform 0.1s; }
+  .chip:active { background: #475569; transform: scale(0.96); filter: none; }
+  .chip.active { background: #1e3a8a; border-color: #3b82f6; }
 
   /* Swimmer list shows 4 rows (64px each + 10px gaps), the rest scrolls. */
   #swimmerList { max-height: 286px; overflow-y: auto; -webkit-overflow-scrolling: touch; margin-bottom: 10px; }
@@ -328,6 +331,13 @@ function applyGroup(groupId) {
   showTab('watch');
 }
 
+// True when the Stopwatch list is exactly this group's swimmers - its button
+// stays highlighted so it's clear which group is loaded.
+function isLoaded(g) {
+  const ids = g.swimmerIds.filter(id => swimmerById(id));
+  return ids.length > 0 && ids.length === state.deck.length && ids.every(id => state.deck.includes(id));
+}
+
 function renderWatch() {
   const root = $('tab-watch');
   root.replaceChildren();
@@ -343,7 +353,7 @@ function renderWatch() {
   const shownGroups = state.groups.filter(g => !g.hidden);
   if (shownGroups.length) {
     root.append(h('div', { class: 'chips' },
-      shownGroups.map(g => h('button', { class: 'chip', onclick: () => applyGroup(g.id) }, g.name))));
+      shownGroups.map(g => h('button', { class: 'chip' + (isLoaded(g) ? ' active' : ''), onclick: () => applyGroup(g.id) }, g.name))));
   }
 
   if (state.deck.length === 0) {
