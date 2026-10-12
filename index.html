@@ -483,11 +483,10 @@ function renderSwimmers() {
     } }, 'Untick all'),
 
     h('h2', null, 'Groups'),
-    h('div', { class: 'sub' }, 'Tick swimmers above, name the group and save it - then load the whole group with one tap.'),
+    h('div', { class: 'sub' }, 'Tick swimmers above, name the group and save it - then load the whole group with one tap from the bar on the Stopwatch tab.'),
     ...state.groups.map(g => h('div', { class: 'card' },
       h('div', { class: 'flex' },
         h('div', { class: 'grow strong' }, g.name),
-        h('button', { class: 'small', onclick: () => applyGroup(g.id) }, 'Use'),
         h('button', { class: 'x', onclick: () => deleteGroup(g) }, '×')),
       h('div', { class: 'label' }, g.swimmerIds.map(id => (swimmerById(id) || {}).name).filter(Boolean).join(', ') || '(empty)'),
       h('label', { class: 'flex label', style: 'margin-top:10px;' },
