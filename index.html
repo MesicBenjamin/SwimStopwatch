@@ -46,8 +46,18 @@
   .btnrow { display: flex; gap: 10px; margin-bottom: 12px; }
   .btnrow > button { flex: 1; }
 
-  .chips { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 12px; padding-bottom: 2px; }
-  .chip { background: #334155; white-space: nowrap; min-height: 36px; padding: 6px 12px; font-size: 13px; border-radius: 18px; }
+  /* Extra room below the group buttons so the horizontal scroll bar sits
+     under them instead of across the names. */
+  .chips { display: flex; gap: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 8px; padding-bottom: 16px; }
+  .chip { background: #334155; white-space: nowrap; flex-shrink: 0; min-height: 44px; padding: 8px 16px; font-size: 14px; border-radius: 22px; }
+
+  /* Swimmer list shows 5 rows (64px each + 10px gaps), the rest scrolls. */
+  #swimmerList { max-height: 360px; overflow-y: auto; -webkit-overflow-scrolling: touch; margin-bottom: 10px; }
+  #swimmerList .card { min-height: 64px; }
+  #swimmerList .card:last-child { margin-bottom: 0; }
+
+  /* Enlarged tap area around a tick box inside a tappable row */
+  .tick { display: flex; align-items: center; padding: 12px; margin: -12px -2px -12px -12px; }
 
   /* Stopwatch rows - the whole card is the tap target */
   .lap { cursor: pointer; user-select: none; -webkit-user-select: none; border: 1px solid transparent; min-height: 68px; }
@@ -90,7 +100,8 @@ const $ = id => document.getElementById(id);
 function emptyState() {
   return { nextId: 1, swimmers: [], groups: [], sessions: [], activeSessionId: null,
            deck: [],       // swimmer ids currently shown on the Stopwatch tab, in order
-           running: {} };  // swimmer id -> Date.now() when their timer was started
+           running: {},    // swimmer id -> Date.now() when their timer was started
+           selected: [] }; // swimmer ids ticked on the Stopwatch tab for "Start selected"
 }
 
 function loadState() {
@@ -271,6 +282,24 @@ function startAll() {
   render();
 }
 
+// Starts only the ticked swimmers, all at the same instant. Ticks are cleared
+// afterwards so the next wave can be ticked while this one is swimming.
+function startSelected() {
+  if (state.selected.length === 0) { toast('Tick the swimmers to start first.'); return; }
+  const now = Date.now();
+  for (const id of state.selected) if (state.running[id] === undefined) state.running[id] = now;
+  state.selected = [];
+  save();
+  render();
+}
+
+function toggleSelected(id, on) {
+  state.selected = state.selected.filter(x => x !== id);
+  if (on) state.selected.push(id);
+  save();
+  render();
+}
+
 function stopAll() {
   const now = Date.now();
   for (const id of state.deck) {
@@ -311,9 +340,10 @@ function renderWatch() {
     h('button', { class: 'secondary small', onclick: newSession }, 'New'),
     s && h('button', { class: 'secondary small', onclick: endSession }, 'End')));
 
-  if (state.groups.length) {
+  const shownGroups = state.groups.filter(g => !g.hidden);
+  if (shownGroups.length) {
     root.append(h('div', { class: 'chips' },
-      state.groups.map(g => h('button', { class: 'chip', onclick: () => applyGroup(g.id) }, g.name))));
+      shownGroups.map(g => h('button', { class: 'chip', onclick: () => applyGroup(g.id) }, g.name))));
   }
 
   if (state.deck.length === 0) {
@@ -325,8 +355,11 @@ function renderWatch() {
     return;
   }
 
+  state.selected = state.selected.filter(id => state.deck.includes(id));
+  const nSel = state.selected.length;
   root.append(h('div', { class: 'btnrow' },
     h('button', { onclick: startAll }, 'Start all'),
+    h('button', { style: nSel ? '' : 'opacity:0.5;', onclick: startSelected }, nSel ? `Start selected (${nSel})` : 'Start selected'),
     h('button', { class: 'secondary', onclick: stopAll }, 'Stop all')));
 
   for (const id of state.deck) {
@@ -338,6 +371,8 @@ function renderWatch() {
     const time = h('div', { class: 'time' }, run !== undefined ? fmt(Date.now() - run) : 'Tap to start');
     if (run !== undefined) time.dataset.run = run;
     root.append(h('div', { class: 'card flex lap' + (run !== undefined ? ' running' : ''), onclick: () => tap(id) },
+      h('label', { class: 'tick', onclick: e => e.stopPropagation() },
+        h('input', { type: 'checkbox', checked: state.selected.includes(id), onchange: e => toggleSelected(id, e.target.checked) })),
       swatch(sw.color),
       h('div', { class: 'grow' },
         h('div', { class: 'strong' }, sw.name),
@@ -345,7 +380,7 @@ function renderWatch() {
       time,
       run !== undefined && h('button', { class: 'small', onclick: e => { e.stopPropagation(); split(id); } }, 'Split')));
   }
-  root.append(h('div', { class: 'sub' }, 'Tap a swimmer to start, tap again to stop and log the lap. Split logs a lap and keeps timing.'));
+  root.append(h('div', { class: 'sub' }, 'Tap a swimmer to start, tap again to stop and log the lap. Split logs a lap and keeps timing. Tick swimmers and use Start selected to start just those together.'));
 }
 
 // Running times are derived from the stored start timestamp, so they stay
@@ -441,16 +476,23 @@ function renderSwimmers() {
     h('input', { type: 'text', placeholder: 'Search swimmers...', value: swimmerSearch, style: 'margin-bottom:12px;',
                  oninput: e => { swimmerSearch = e.target.value; renderSwimmerList(); } }),
     h('div', { id: 'swimmerList' }),
-    h('button', { class: 'secondary', style: 'width:100%;', onclick: () => { setDeck([]); save(); render(); } }, 'Untick all'),
+    h('button', { class: 'secondary', style: 'width:100%;', onclick: () => {
+      const n = Object.keys(state.running).length;
+      if (n && !confirm(`${n} running timer${n === 1 ? '' : 's'} will be discarded. Continue?`)) return;
+      setDeck([]); save(); render();
+    } }, 'Untick all'),
 
     h('h2', null, 'Groups'),
     h('div', { class: 'sub' }, 'Tick swimmers above, name the group and save it - then load the whole group with one tap.'),
-    state.groups.map(g => h('div', { class: 'card' },
+    ...state.groups.map(g => h('div', { class: 'card' },
       h('div', { class: 'flex' },
         h('div', { class: 'grow strong' }, g.name),
         h('button', { class: 'small', onclick: () => applyGroup(g.id) }, 'Use'),
         h('button', { class: 'x', onclick: () => deleteGroup(g) }, '×')),
-      h('div', { class: 'label' }, g.swimmerIds.map(id => (swimmerById(id) || {}).name).filter(Boolean).join(', ') || '(empty)'))),
+      h('div', { class: 'label' }, g.swimmerIds.map(id => (swimmerById(id) || {}).name).filter(Boolean).join(', ') || '(empty)'),
+      h('label', { class: 'flex label', style: 'margin-top:10px;' },
+        h('input', { type: 'checkbox', checked: !g.hidden, onchange: e => { g.hidden = !e.target.checked; save(); } }),
+        'Show on Stopwatch tab'))),
     h('div', { class: 'card flex' },
       h('input', { type: 'text', id: 'newGroupName', placeholder: 'Group name, e.g. Team A' }),
       h('button', { onclick: saveGroup }, 'Save')));
