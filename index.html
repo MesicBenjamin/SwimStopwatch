@@ -552,19 +552,19 @@ function renderSwimmers() {
   root.replaceChildren();
 
   root.append(
-    h('div', { class: 'card flex' },
-      h('input', { type: 'color', id: 'newColor', value: PALETTE[state.swimmers.length % PALETTE.length] }),
-      h('input', { type: 'text', id: 'newName', placeholder: 'Swimmer name', onkeydown: e => { if (e.key === 'Enter') addSwimmer(); } }),
-      h('button', { onclick: addSwimmer }, 'Add')),
     h('div', { class: 'sub' }, 'Ticked swimmers appear on the Stopwatch tab. Tap a name to rename it.'),
     h('input', { type: 'text', placeholder: 'Search swimmers...', value: swimmerSearch, style: 'margin-bottom:12px;',
                  oninput: e => { swimmerSearch = e.target.value; renderSwimmerList(); } }),
     h('div', { id: 'swimmerList' }),
-    h('button', { class: 'secondary', style: 'width:100%;', onclick: () => {
+    h('button', { class: 'secondary', style: 'width:100%; margin-bottom:10px;', onclick: () => {
       const n = Object.keys(state.running).length;
       if (n && !confirm(`${n} running timer${n === 1 ? '' : 's'} will be discarded. Continue?`)) return;
       setDeck([]); save(); render();
     } }, 'Untick all'),
+    h('div', { class: 'card flex' },
+      h('input', { type: 'color', id: 'newColor', value: PALETTE[state.swimmers.length % PALETTE.length] }),
+      h('input', { type: 'text', id: 'newName', placeholder: 'Swimmer name', onkeydown: e => { if (e.key === 'Enter') addSwimmer(); } }),
+      h('button', { onclick: addSwimmer }, 'Add')),
 
     h('h2', null, 'Groups'),
     h('div', { class: 'sub' }, 'Tick swimmers above, name the group and save it - then load the whole group with one tap from the bar on the Stopwatch tab.'),
