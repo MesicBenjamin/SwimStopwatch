@@ -101,7 +101,22 @@ function loadState() {
   return emptyState();
 }
 
-let state = loadState();
+// Starter roster for a phone that has never used the app. Runs once only
+// (the `seeded` flag), so deleting these swimmers later doesn't bring them back.
+const SEED_NAMES = ['Matej', 'Ema', 'Lucas', 'Benjamin', 'Branimir', 'Josipa'];
+
+function seedIfNew(s) {
+  if (s.seeded) return s;
+  s.seeded = true;
+  if (s.swimmers.length || s.groups.length || s.sessions.length) return s;
+  s.swimmers = SEED_NAMES.map((name, i) => ({ id: s.nextId++, name, color: PALETTE[i % PALETTE.length] }));
+  const ids = s.swimmers.map(sw => sw.id);
+  s.groups = [{ id: s.nextId++, name: 'All', swimmerIds: ids.slice() }];
+  s.deck = ids;
+  return s;
+}
+
+let state = seedIfNew(loadState());
 let currentTab = 'watch';
 let openSessionId = null;
 let swimmerSearch = '';
