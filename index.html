@@ -38,7 +38,6 @@
   button.small { min-height: 36px; padding: 6px 10px; font-size: 13px; }
 
   input[type=text] { background: #0f172a; color: #e2e8f0; border: 1px solid #334155; border-radius: 8px; padding: 10px; font-size: 16px; width: 100%; min-width: 0; font-family: inherit; }
-  input[type=color] { width: 40px; height: 40px; border: none; border-radius: 8px; background: none; padding: 0; flex-shrink: 0; }
   input[type=checkbox] { width: 22px; height: 22px; flex-shrink: 0; }
 
   .card { background: #1e293b; padding: 12px; border-radius: 10px; margin-bottom: 10px; }
@@ -47,7 +46,6 @@
   .grow { flex: 1; min-width: 0; }
   .label { font-size: 12px; color: #94a3b8; }
   .strong { font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
-  .swatch { width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0; }
   .btnrow { display: flex; gap: 10px; margin-bottom: 12px; }
   .btnrow > button { flex: 1; }
 
@@ -117,7 +115,6 @@
 // no server, no network. All names are inserted as text nodes (never as
 // HTML), and swimmers are tracked by id, so duplicate or odd names are safe.
 const KEY = 'swimstopwatch.v1';
-const PALETTE = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#06b6d4', '#ec4899', '#eab308'];
 const $ = id => document.getElementById(id);
 
 function emptyState() {
@@ -143,7 +140,7 @@ function seedIfNew(s) {
   if (s.seeded) return s;
   s.seeded = true;
   if (s.swimmers.length || s.groups.length || s.sessions.length) return s;
-  s.swimmers = SEED_NAMES.map((name, i) => ({ id: s.nextId++, name, color: PALETTE[i % PALETTE.length] }));
+  s.swimmers = SEED_NAMES.map(name => ({ id: s.nextId++, name }));
   const ids = s.swimmers.map(sw => sw.id);
   s.groups = [{ id: s.nextId++, name: 'All', swimmerIds: ids.slice() }];
   s.deck = ids;
@@ -201,7 +198,6 @@ function toast(msg) {
 
 const swimmerById = id => state.swimmers.find(s => s.id === id);
 const activeSession = () => state.sessions.find(s => s.id === state.activeSessionId);
-const swatch = color => h('div', { class: 'swatch', style: `background:${color}` });
 
 // On phones, hand the file to the share sheet (save to Files, AirDrop, mail);
 // elsewhere fall back to a normal download.
@@ -427,7 +423,6 @@ function renderWatch() {
     root.append(h('div', { class: 'card flex lap' + (run !== undefined ? ' running' : ''), onclick: () => tap(id) },
       h('label', { class: 'tick', onclick: e => e.stopPropagation() },
         h('input', { type: 'checkbox', checked: state.selected.includes(id), onchange: e => toggleSelected(id, e.target.checked) })),
-      swatch(sw.color),
       h('div', { class: 'grow' },
         h('div', { class: 'strong' }, sw.name),
         h('div', { class: 'label' }, `${laps.length} lap${laps.length === 1 ? '' : 's'}${last}`)),
@@ -449,8 +444,7 @@ setInterval(() => {
 function addSwimmer() {
   const name = $('newName').value.trim();
   if (!name) { toast('Enter a name first.'); return; }
-  const color = $('newColor').value;
-  const sw = { id: state.nextId++, name, color };
+  const sw = { id: state.nextId++, name };
   state.swimmers.push(sw);
   state.deck.push(sw.id);
   save();
@@ -509,7 +503,6 @@ function renderSwimmerList() {
     if (!sw.name.toLowerCase().includes(q)) continue;
     list.append(h('div', { class: 'card flex' },
       h('input', { type: 'checkbox', checked: state.deck.includes(sw.id), onchange: e => toggleDeck(sw.id, e.target.checked) }),
-      h('input', { type: 'color', value: sw.color, onchange: e => { sw.color = e.target.value; save(); } }),
       h('div', { class: 'grow strong', onclick: () => renameSwimmer(sw) }, sw.name),
       h('button', { class: 'x', onclick: () => deleteSwimmer(sw) }, '×')));
   }
@@ -562,7 +555,6 @@ function renderSwimmers() {
       setDeck([]); save(); render();
     } }, 'Untick all'),
     h('div', { class: 'card flex' },
-      h('input', { type: 'color', id: 'newColor', value: PALETTE[state.swimmers.length % PALETTE.length] }),
       h('input', { type: 'text', id: 'newName', placeholder: 'Swimmer name', onkeydown: e => { if (e.key === 'Enter') addSwimmer(); } }),
       h('button', { onclick: addSwimmer }, 'Add')),
 

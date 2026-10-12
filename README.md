@@ -72,7 +72,7 @@ happens once; swimmers deleted later do not come back.
 ### Swimmers tab
 
 - **Swimmers** - search, tick the swimmers that should appear on the
-  Stopwatch tab, change a colour, tap a name to rename it, × to delete. The
+  Stopwatch tab, tap a name to rename it, × to delete. The
   list shows four at a time and scrolls. Add a new swimmer with the form
   below the list.
 - **Groups** - tick a set of swimmers, type a group name and **Save**. The
