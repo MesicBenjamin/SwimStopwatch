@@ -68,15 +68,18 @@
   .tick { display: flex; align-items: center; padding: 12px; margin: -12px -2px -12px -12px; }
 
   /* Stopwatch rows - the whole card is the tap target */
-  .lap { cursor: pointer; user-select: none; -webkit-user-select: none; border: 1px solid transparent; min-height: 68px; }
+  .lap { user-select: none; -webkit-user-select: none; border: 1px solid transparent; }
   .lap.running { background: #14532d; border-color: #22c55e; }
   .time { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
-  .lap:not(.running) .time { font-size: 13px; font-weight: 400; color: #94a3b8; }
+  /* The two per-swimmer buttons: equal width, big enough to hit poolside */
+  .swimbtns { display: flex; gap: 10px; margin-top: 10px; }
+  .swimbtns > button { flex: 1 1 0; min-height: 56px; font-size: 17px; font-weight: 600; }
+  button:disabled { opacity: 0.4; cursor: default; }
 
   .bar { flex: 1; background: #0f172a; border-radius: 4px; overflow: hidden; height: 18px; }
   .bar > div { height: 100%; background: #3b82f6; }
   .bar > div.best { background: #22c55e; }
-  .x { background: none; color: #94a3b8; min-height: 32px; padding: 0 8px; font-size: 18px; }
+  .x { background: none; color: #94a3b8; min-height: 32px; width: 30px; padding: 0; font-size: 18px; flex-shrink: 0; }
 
   /* Stopwatch tab: start/stop buttons pinned to the bottom of the screen.
      The tab gets matching bottom padding so the last swimmer row can scroll
@@ -120,16 +123,38 @@ const $ = id => document.getElementById(id);
 function emptyState() {
   return { nextId: 1, swimmers: [], groups: [], sessions: [], activeSessionId: null,
            deck: [],       // swimmer ids currently shown on the Stopwatch tab, in order
-           running: {},    // swimmer id -> Date.now() when their timer was started
+           running: {},    // swimmer id -> { start, marks } of the swim being timed
            selected: [] }; // swimmer ids ticked on the Stopwatch tab for "Start selected"
 }
 
 function loadState() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY));
-    if (s && Array.isArray(s.swimmers)) return Object.assign(emptyState(), s);
+    if (s && Array.isArray(s.swimmers)) return migrate(Object.assign(emptyState(), s));
   } catch (e) {}
   return emptyState();
+}
+
+// Data model. A *swim* is one measurement from Start to Stop (e.g. a whole
+// 2000 m). Each Split tap inside it stores a timestamp in `marks`, cutting
+// the swim into *splits* (e.g. every 100 m); the last split ends at Stop.
+//   state.running[id] = { start, marks: [t, ...] }
+//   session.swims     = [{ swimmerId, name, start, marks: [t, ...], end }]
+const splitTimes = sw => [...sw.marks, sw.end].map((t, i, a) => t - (i ? a[i - 1] : sw.start));
+
+// Older versions stored a bare start time per running swimmer and a flat
+// list of laps per session; convert both to the swim model.
+function migrate(s) {
+  for (const id in s.running) {
+    if (typeof s.running[id] === 'number') s.running[id] = { start: s.running[id], marks: [] };
+  }
+  for (const ses of s.sessions) {
+    if (!ses.swims) {
+      ses.swims = (ses.laps || []).map(l => ({ swimmerId: l.swimmerId, name: l.name, start: l.at - l.ms, marks: [], end: l.at }));
+    }
+    delete ses.laps;
+  }
+  return s;
 }
 
 // Starter roster for a phone that has never used the app. Runs once only
@@ -179,7 +204,7 @@ function h(tag, props, ...kids) {
 const pad = n => String(n).padStart(2, '0');
 
 function fmt(ms) {
-  const cs = Math.max(0, Math.floor(ms / 10));
+  const cs = Math.max(0, Math.round(ms / 10));
   return `${Math.floor(cs / 6000)}:${pad(Math.floor(cs / 100) % 60)}.${pad(cs % 100)}`;
 }
 
@@ -258,7 +283,7 @@ function render() {
 
 // ---- sessions ----
 function createSession(name) {
-  const s = { id: state.nextId++, name, startedAt: Date.now(), laps: [] };
+  const s = { id: state.nextId++, name, startedAt: Date.now(), swims: [] };
   state.sessions.push(s);
   state.activeSessionId = s.id;
   return s;
@@ -293,39 +318,37 @@ function endSession() {
 }
 
 // ---- stopwatch ----
-// A lap is never thrown away for lack of a session: one is created on demand.
-function logLap(id, now) {
-  const start = state.running[id];
+// A swim is never thrown away for lack of a session: one is created on demand.
+function endSwim(id, now) {
+  const run = state.running[id];
   const sw = swimmerById(id);
-  if (start === undefined || !sw) return;
+  delete state.running[id];
+  if (!run || !sw) return;
   const s = activeSession() || createSession(timestampName());
-  s.laps.push({ swimmerId: id, name: sw.name, ms: now - start, at: now });
+  s.swims.push({ swimmerId: id, name: sw.name, start: run.start, marks: run.marks, end: now });
 }
 
-function tap(id) {
+// Button 1: starts a swim, or stops it (which also closes its last split).
+function startStop(id) {
   const now = Date.now();
-  if (state.running[id] === undefined) {
-    state.running[id] = now;
-  } else {
-    logLap(id, now);
-    delete state.running[id];
-  }
+  if (state.running[id]) endSwim(id, now);
+  else state.running[id] = { start: now, marks: [] };
   save();
   render();
 }
 
-// Logs the lap and immediately starts the next one - for continuous swims.
+// Button 2: marks a split inside the running swim; the swim keeps timing.
 function split(id) {
-  const now = Date.now();
-  logLap(id, now);
-  state.running[id] = now;
+  const run = state.running[id];
+  if (!run) return;
+  run.marks.push(Date.now());
   save();
   render();
 }
 
 function startAll() {
   const now = Date.now();
-  for (const id of state.deck) if (state.running[id] === undefined) state.running[id] = now;
+  for (const id of state.deck) if (!state.running[id]) state.running[id] = { start: now, marks: [] };
   save();
   render();
 }
@@ -335,7 +358,7 @@ function startAll() {
 function startSelected() {
   if (state.selected.length === 0) { toast('Tick the swimmers to start first.'); return; }
   const now = Date.now();
-  for (const id of state.selected) if (state.running[id] === undefined) state.running[id] = now;
+  for (const id of state.selected) if (!state.running[id]) state.running[id] = { start: now, marks: [] };
   state.selected = [];
   save();
   render();
@@ -350,11 +373,7 @@ function toggleSelected(id, on) {
 
 function stopAll() {
   const now = Date.now();
-  for (const id of state.deck) {
-    if (state.running[id] === undefined) continue;
-    logLap(id, now);
-    delete state.running[id];
-  }
+  for (const id of state.deck) if (state.running[id]) endSwim(id, now);
   save();
   render();
 }
@@ -416,20 +435,37 @@ function renderWatch() {
     const sw = swimmerById(id);
     if (!sw) continue;
     const run = state.running[id];
-    const laps = s ? s.laps.filter(l => l.swimmerId === id) : [];
-    const last = laps.length ? ` · last ${fmt(laps[laps.length - 1].ms)}` : '';
-    const time = h('div', { class: 'time' }, run !== undefined ? fmt(Date.now() - run) : 'Tap to start');
-    if (run !== undefined) time.dataset.run = run;
-    root.append(h('div', { class: 'card flex lap' + (run !== undefined ? ' running' : ''), onclick: () => tap(id) },
-      h('label', { class: 'tick', onclick: e => e.stopPropagation() },
-        h('input', { type: 'checkbox', checked: state.selected.includes(id), onchange: e => toggleSelected(id, e.target.checked) })),
-      h('div', { class: 'grow' },
-        h('div', { class: 'strong' }, sw.name),
-        h('div', { class: 'label' }, `${laps.length} lap${laps.length === 1 ? '' : 's'}${last}`)),
-      time,
-      run !== undefined && h('button', { class: 'small', onclick: e => { e.stopPropagation(); split(id); } }, 'Split')));
+    const swims = s ? s.swims.filter(x => x.swimmerId === id) : [];
+    let info, time = null;
+    if (run) {
+      // big number = whole swim so far; small line = the split in progress
+      const marks = run.marks;
+      const splitStart = marks.length ? marks[marks.length - 1] : run.start;
+      const cur = h('span', null, fmt(Date.now() - splitStart));
+      cur.dataset.run = splitStart;
+      const prev = marks.length ? ` · prev ${fmt(splitStart - (marks.length > 1 ? marks[marks.length - 2] : run.start))}` : '';
+      info = h('div', { class: 'label' }, `Split ${marks.length + 1} · `, cur, prev);
+      time = h('div', { class: 'time' }, fmt(Date.now() - run.start));
+      time.dataset.run = run.start;
+    } else {
+      const last = swims[swims.length - 1];
+      info = h('div', { class: 'label' }, last
+        ? `${swims.length} swim${swims.length === 1 ? '' : 's'} · last ${fmt(last.end - last.start)}`
+        : 'Not started');
+    }
+    root.append(h('div', { class: 'card lap' + (run ? ' running' : '') },
+      h('div', { class: 'flex' },
+        h('label', { class: 'tick' },
+          h('input', { type: 'checkbox', checked: state.selected.includes(id), onchange: e => toggleSelected(id, e.target.checked) })),
+        h('div', { class: 'grow' },
+          h('div', { class: 'strong' }, sw.name),
+          info),
+        time),
+      h('div', { class: 'swimbtns' },
+        h('button', { class: run ? 'danger' : '', onclick: () => startStop(id) }, run ? 'Stop' : 'Start'),
+        h('button', { class: 'secondary', disabled: !run, onclick: () => split(id) }, 'Split'))));
   }
-  root.append(h('div', { class: 'sub' }, 'Tap a swimmer to start, tap again to stop and log the lap. Split logs a lap and keeps timing. Tick swimmers and use Start selected to start just those together.'));
+  root.append(h('div', { class: 'sub' }, 'Start begins a swim and Stop ends it. Split marks a split (for example every 100 m) while the swim keeps timing. Tick swimmers and use Start selected to start just those together.'));
   root.append(bar);
 }
 
@@ -574,14 +610,22 @@ function renderSwimmers() {
 // ---- history ----
 const csvCell = v => /[",\n\r]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);
 
+// One row per event - start, every split, stop - so the export holds
+// everything that was tapped. `clock` is the phone's time of day.
 function sessionCsv(s) {
+  const sec = ms => (ms / 1000).toFixed(2);
+  const clock = t => {
+    const d = new Date(t);
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(Math.floor(d.getMilliseconds() / 10))}`;
+  };
+  const rows = [['session', 'swimmer', 'swim', 'event', 'split', 'split_seconds', 'total_seconds', 'clock']];
   const counts = {};
-  const rows = [['session', 'swimmer', 'lap', 'seconds', 'time', 'finished_at']];
-  for (const l of s.laps) {
-    counts[l.swimmerId] = (counts[l.swimmerId] || 0) + 1;
-    const d = new Date(l.at);
-    rows.push([s.name, l.name, counts[l.swimmerId], (l.ms / 1000).toFixed(2), fmt(l.ms),
-               `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`]);
+  for (const sw of s.swims) {
+    const n = counts[sw.swimmerId] = (counts[sw.swimmerId] || 0) + 1;
+    const times = splitTimes(sw);
+    rows.push([s.name, sw.name, n, 'start', '', '', sec(0), clock(sw.start)]);
+    [...sw.marks, sw.end].forEach((t, i) => rows.push(
+      [s.name, sw.name, n, i < sw.marks.length ? 'split' : 'stop', i + 1, sec(times[i]), sec(t - sw.start), clock(t)]));
   }
   return rows.map(r => r.map(csvCell).join(',')).join('\n') + '\n';
 }
@@ -589,7 +633,7 @@ function sessionCsv(s) {
 const safeFilename = name => (name.replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'session');
 
 function deleteSession(s) {
-  if (!confirm(`Delete session ${s.name} and its ${s.laps.length} laps?`)) return;
+  if (!confirm(`Delete session ${s.name} and its ${s.swims.length} swim${s.swims.length === 1 ? '' : 's'}?`)) return;
   if (s.id === state.activeSessionId) {
     if (!okToDropRunning()) return;
     state.activeSessionId = null;
@@ -602,28 +646,37 @@ function deleteSession(s) {
 function sessionDetail(s) {
   const box = h('div', { style: 'margin-top:12px;' });
   const bySwimmer = new Map();
-  for (const l of s.laps) {
-    if (!bySwimmer.has(l.swimmerId)) bySwimmer.set(l.swimmerId, []);
-    bySwimmer.get(l.swimmerId).push(l);
+  for (const sw of s.swims) {
+    if (!bySwimmer.has(sw.swimmerId)) bySwimmer.set(sw.swimmerId, []);
+    bySwimmer.get(sw.swimmerId).push(sw);
   }
-  for (const laps of bySwimmer.values()) {
-    const times = laps.map(l => l.ms);
-    const max = Math.max(...times), best = Math.min(...times);
-    const avg = times.reduce((a, b) => a + b, 0) / times.length;
-    box.append(h('div', { class: 'strong', style: 'margin:10px 0 6px;' }, laps[laps.length - 1].name));
-    laps.forEach((l, i) => box.append(h('div', { class: 'flex', style: 'gap:8px; margin-bottom:4px;' },
-      h('div', { class: 'label', style: 'width:42px; flex-shrink:0;' }, `Lap ${i + 1}`),
-      h('div', { class: 'bar' }, h('div', { class: l.ms === best ? 'best' : '', style: `width:${max > 0 ? Math.round(l.ms / max * 100) : 0}%` })),
-      h('div', { style: 'width:64px; font-size:12px; text-align:right; flex-shrink:0; font-variant-numeric:tabular-nums;' }, fmt(l.ms)),
-      h('button', { class: 'x', onclick: () => {
-        if (!confirm(`Delete lap ${i + 1} (${fmt(l.ms)}) of ${l.name}?`)) return;
-        s.laps.splice(s.laps.indexOf(l), 1);
-        save();
-        render();
-      } }, '×'))));
-    box.append(h('div', { class: 'label' }, `Avg ${fmt(avg)} · Best ${fmt(best)} · ${laps.length} lap${laps.length === 1 ? '' : 's'}`));
+  const change = fn => { fn(); save(); render(); };
+  for (const swims of bySwimmer.values()) {
+    box.append(h('div', { class: 'strong', style: 'margin:14px 0 2px;' }, swims[swims.length - 1].name));
+    swims.forEach((sw, n) => {
+      const times = splitTimes(sw);
+      const max = Math.max(...times), best = Math.min(...times);
+      box.append(h('div', { class: 'flex', style: 'gap:8px; margin-top:6px;' },
+        h('div', { class: 'grow', style: 'font-size:13px;' }, `Swim ${n + 1} · total ${fmt(sw.end - sw.start)}`),
+        h('button', { class: 'x', onclick: () => {
+          if (confirm(`Delete swim ${n + 1} (${fmt(sw.end - sw.start)}) of ${sw.name}?`)) change(() => s.swims.splice(s.swims.indexOf(sw), 1));
+        } }, '×')));
+      if (times.length < 2) return;  // no splits were marked - the total says it all
+      times.forEach((ms, i) => box.append(h('div', { class: 'flex', style: 'gap:8px; margin-bottom:4px;' },
+        h('div', { class: 'label', style: 'width:48px; flex-shrink:0;' }, `Split ${i + 1}`),
+        h('div', { class: 'bar' }, h('div', { class: ms === best ? 'best' : '', style: `width:${max > 0 ? Math.round(ms / max * 100) : 0}%` })),
+        h('div', { style: 'width:64px; font-size:12px; text-align:right; flex-shrink:0; font-variant-numeric:tabular-nums;' }, fmt(ms)),
+        // Removing a split mark keeps the swim's total: its time joins the next split.
+        i < sw.marks.length
+          ? h('button', { class: 'x', onclick: () => {
+              if (confirm(`Remove the mark after split ${i + 1}? Its ${fmt(ms)} is added to the next split.`)) change(() => sw.marks.splice(i, 1));
+            } }, '×')
+          : h('div', { style: 'width:30px; flex-shrink:0;' }))));
+      const avg = times.reduce((a, b) => a + b, 0) / times.length;
+      box.append(h('div', { class: 'label' }, `Avg split ${fmt(avg)} · Best ${fmt(best)} · ${times.length} splits`));
+    });
   }
-  if (!s.laps.length) box.append(h('div', { class: 'sub' }, 'No laps logged in this session.'));
+  if (!s.swims.length) box.append(h('div', { class: 'sub' }, 'No swims logged in this session.'));
   box.append(h('div', { class: 'btnrow', style: 'margin:14px 0 0;' },
     h('button', { class: 'secondary', onclick: () => download(safeFilename(s.name) + '.csv', sessionCsv(s), 'text/csv') }, 'Export CSV'),
     h('button', { class: 'danger', onclick: () => deleteSession(s) }, 'Delete')));
@@ -642,7 +695,7 @@ async function importBackup(file) {
   try { data = JSON.parse(await file.text()); } catch (e) { data = null; }
   if (!data || !Array.isArray(data.swimmers) || !Array.isArray(data.sessions)) { toast('That is not a SwimStopwatch backup file.'); return; }
   if (!confirm('Replace everything on this phone with the backup?')) return;
-  state = Object.assign(emptyState(), data);
+  state = migrate(Object.assign(emptyState(), data));
   save();
   render();
   toast('Backup restored.');
@@ -659,7 +712,7 @@ function renderHistory() {
       h('div', { class: 'flex', style: 'cursor:pointer;', onclick: () => { openSessionId = open ? null : s.id; render(); } },
         h('div', { class: 'grow' },
           h('div', { class: 'strong' }, s.name),
-          h('div', { class: 'label' }, `${timestampName(new Date(s.startedAt))} · ${s.laps.length} lap${s.laps.length === 1 ? '' : 's'}` +
+          h('div', { class: 'label' }, `${timestampName(new Date(s.startedAt))} · ${s.swims.length} swim${s.swims.length === 1 ? '' : 's'}` +
                                       (s.id === state.activeSessionId ? ' · active' : ''))),
         h('div', { class: 'label' }, open ? '▲' : '▼')),
       open && sessionDetail(s)));

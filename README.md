@@ -1,7 +1,7 @@
 # SwimStopwatch
 
-A phone-only lap stopwatch for swim training: a swimmer roster, named groups,
-per-swimmer tap-to-time laps, session history and CSV export. It needs no
+A phone-only stopwatch for swim training: a swimmer roster, named groups,
+per-swimmer swim and split timing, session history and CSV export. It needs no
 board, no server and no connection at the pool - everything runs in the
 phone's browser and is stored on the phone.
 
@@ -61,13 +61,16 @@ happens once; swimmers deleted later do not come back.
 
 - **Group bar** (top) - one button per group. Tapping a group replaces the
   list with that group's swimmers; the loaded group stays highlighted.
-- **Swimmer rows** - tap a row to start that swimmer's timer, tap again to
-  stop and log the lap. **Split** logs a lap and keeps timing. Each row shows
-  the lap count and the last lap time.
+- **Swimmer rows** - each row has two equal buttons. **Start / Stop** begins
+  and ends a *swim*: one whole measurement, for example a 2000 m. **Split**
+  marks a *split* inside the running swim, for example every 100 m, while the
+  swim keeps timing. Stop also closes the last split, so 20 splits take 19
+  taps of Split and one of Stop. While running, the big number is the whole
+  swim so far and the small line shows the current and previous split.
 - **Bottom bar** - **Start all** starts everyone at the same instant.
   **Start selected** starts only the swimmers whose tick box (left of each
   row) is ticked, then clears the ticks so the next wave can be ticked.
-  **Stop all** stops everyone and logs their laps.
+  **Stop all** ends everyone's swim.
 
 ### Swimmers tab
 
@@ -84,15 +87,32 @@ happens once; swimmers deleted later do not come back.
 
 Holds the **session**: its name, **New** to start a named session and
 **End** to close it. The active session's name is shown in the header. If no
-session is active, one is created automatically on the first lap, so a timed
-swim is never lost.
+session is active, one is created automatically when the first swim is
+stopped, so a timed swim is never lost.
 
 ### History tab
 
-Every session with per-swimmer laps, average and best. Each lap is a bar:
-its length is relative to that swimmer's slowest lap, and their fastest lap
-is green. Export a session as CSV, delete single laps or whole sessions, and
-export or import a full backup.
+Every session, with each swimmer's swims. A swim shows its total time and,
+if splits were marked, one bar per split: the bar's length is relative to the
+slowest split of that swim and the fastest split is green, with average and
+best below. × on a swim deletes it. × on a split removes that mark and adds
+its time to the next split, which undoes a mistaken Split tap without
+changing the total. Sessions can be exported as CSV or deleted, and a full
+backup can be exported or imported.
+
+### CSV export
+
+One row per tap - start, every split, stop:
+
+```
+session,swimmer,swim,event,split,split_seconds,total_seconds,clock
+Morning,Nikša,1,start,,,0.00,07:57:58.10
+Morning,Nikša,1,split,1,67.30,67.30,07:59:05.40
+Morning,Nikša,1,stop,2,72.56,139.86,08:00:17.96
+```
+
+`split_seconds` is the time of that split, `total_seconds` the time since
+the swim started, and `clock` the phone's time of day.
 
 ## Where the data lives
 
