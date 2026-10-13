@@ -32,7 +32,8 @@
   .tab-btn.active { color: #e2e8f0; border-bottom-color: #3b82f6; }
 
   button { background: #3b82f6; color: white; border: none; padding: 10px 14px; border-radius: 8px; cursor: pointer; font-size: 14px; min-height: 44px; font-family: inherit; }
-  button:active { filter: brightness(0.85); }
+  button { transition: transform 0.08s, filter 0.08s; }
+  button:active { filter: brightness(1.25); transform: scale(0.96); }
   button.secondary { background: #475569; }
   button.danger { background: #dc2626; }
   button.small { min-height: 36px; padding: 6px 10px; font-size: 13px; }
@@ -75,6 +76,13 @@
   .swimbtns { display: flex; gap: 10px; margin-top: 10px; }
   .swimbtns > button { flex: 1 1 0; min-height: 56px; font-size: 17px; font-weight: 600; }
   button:disabled { opacity: 0.4; cursor: default; }
+  button:disabled:active { filter: none; transform: none; }
+  /* Confirmation after a tap registered: a bright ring that fades out */
+  @keyframes tapflash {
+    from { box-shadow: 0 0 0 4px #e2e8f0; filter: brightness(1.7); }
+    to   { box-shadow: 0 0 0 0 transparent; filter: none; }
+  }
+  .flash { animation: tapflash 0.5s ease-out; }
 
   .bar { flex: 1; background: #0f172a; border-radius: 4px; overflow: hidden; height: 18px; }
   .bar > div { height: 100%; background: #3b82f6; }
@@ -328,11 +336,22 @@ function endSwim(id, now) {
   s.swims.push({ swimmerId: id, name: sw.name, start: run.start, marks: run.marks, end: now });
 }
 
+// Tap feedback. The row is rebuilt on every tap, so a pressed look alone
+// would vanish instantly; instead the next render flashes the button that
+// was hit (`kind` is 'main' for Start/Stop or 'split'), plus a short buzz
+// on phones that support vibration.
+let flash = null;
+function feedback(kind, ids) {
+  flash = { kind, ids };
+  if (navigator.vibrate) navigator.vibrate(15);
+}
+
 // Button 1: starts a swim, or stops it (which also closes its last split).
 function startStop(id) {
   const now = Date.now();
   if (state.running[id]) endSwim(id, now);
   else state.running[id] = { start: now, marks: [] };
+  feedback('main', [id]);
   save();
   render();
 }
@@ -342,13 +361,16 @@ function split(id) {
   const run = state.running[id];
   if (!run) return;
   run.marks.push(Date.now());
+  feedback('split', [id]);
   save();
   render();
 }
 
 function startAll() {
   const now = Date.now();
-  for (const id of state.deck) if (!state.running[id]) state.running[id] = { start: now, marks: [] };
+  const started = state.deck.filter(id => !state.running[id]);
+  for (const id of started) state.running[id] = { start: now, marks: [] };
+  feedback('main', started);
   save();
   render();
 }
@@ -358,7 +380,9 @@ function startAll() {
 function startSelected() {
   if (state.selected.length === 0) { toast('Tick the swimmers to start first.'); return; }
   const now = Date.now();
-  for (const id of state.selected) if (!state.running[id]) state.running[id] = { start: now, marks: [] };
+  const started = state.selected.filter(id => !state.running[id]);
+  for (const id of started) state.running[id] = { start: now, marks: [] };
+  feedback('main', started);
   state.selected = [];
   save();
   render();
@@ -373,7 +397,9 @@ function toggleSelected(id, on) {
 
 function stopAll() {
   const now = Date.now();
-  for (const id of state.deck) if (state.running[id]) endSwim(id, now);
+  const stopped = state.deck.filter(id => state.running[id]);
+  for (const id of stopped) endSwim(id, now);
+  feedback('main', stopped);
   save();
   render();
 }
@@ -431,6 +457,7 @@ function renderWatch() {
     h('button', { style: nSel ? '' : 'opacity:0.5;', onclick: startSelected }, nSel ? `Start selected (${nSel})` : 'Start selected'),
     h('button', { class: 'secondary', onclick: stopAll }, 'Stop all')));
 
+  const flashed = (kind, id) => flash && flash.kind === kind && flash.ids.includes(id) ? ' flash' : '';
   for (const id of state.deck) {
     const sw = swimmerById(id);
     if (!sw) continue;
@@ -461,9 +488,10 @@ function renderWatch() {
           info),
         time),
       h('div', { class: 'swimbtns' },
-        h('button', { class: run ? 'danger' : '', onclick: () => startStop(id) }, run ? 'Stop' : 'Start'),
-        h('button', { class: 'secondary', disabled: !run, onclick: () => split(id) }, 'Split'))));
+        h('button', { class: (run ? 'danger' : '') + flashed('main', id), onclick: () => startStop(id) }, run ? 'Stop' : 'Start'),
+        h('button', { class: 'secondary' + flashed('split', id), disabled: !run, onclick: () => split(id) }, 'Split'))));
   }
+  flash = null;
   root.append(h('div', { class: 'sub' }, 'Start begins a swim and Stop ends it. Split marks a split (for example every 100 m) while the swim keeps timing. Tick swimmers and use Start selected to start just those together.'));
   root.append(bar);
 }
@@ -750,6 +778,9 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+
+// iOS Safari only applies :active (the pressed look) once a touch listener exists.
+document.addEventListener('touchstart', () => {}, { passive: true });
 
 showTab('watch');
 </script>
