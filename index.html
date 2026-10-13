@@ -338,12 +338,10 @@ function endSwim(id, now) {
 
 // Tap feedback. The row is rebuilt on every tap, so a pressed look alone
 // would vanish instantly; instead the next render flashes the button that
-// was hit (`kind` is 'main' for Start/Stop or 'split'), plus a short buzz
-// on phones that support vibration.
+// was hit (`kind` is 'main' for Start/Stop or 'split').
 let flash = null;
 function feedback(kind, ids) {
   flash = { kind, ids };
-  if (navigator.vibrate) navigator.vibrate(15);
 }
 
 // Button 1: starts a swim, or stops it (which also closes its last split).
