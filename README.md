@@ -82,8 +82,9 @@ happens once; swimmers deleted later do not come back.
   below the list.
 - **Groups** - tick a set of swimmers, type a group name and **Save**. The
   search matches group names and member names. Each group has a **Show on
-  Stopwatch tab** tick box (untick to keep the group but hide its button) and
-  × to delete. The list shows four at a time and scrolls.
+  Stopwatch tab** tick box (untick to keep the group but hide its button), a
+  **Load on Stopwatch** button that makes the Stopwatch tab show only that
+  group's swimmers, and × to delete. The list shows four at a time and scrolls.
 
 ### Menu (☰, next to the title)
 

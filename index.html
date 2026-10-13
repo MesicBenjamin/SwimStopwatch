@@ -597,9 +597,11 @@ function renderGroupList() {
         h('div', { class: 'grow strong' }, g.name),
         h('button', { class: 'x', onclick: () => deleteGroup(g) }, '×')),
       h('div', { class: 'label' }, members || '(empty)'),
-      h('label', { class: 'flex label', style: 'margin-top:10px;' },
-        h('input', { type: 'checkbox', checked: !g.hidden, onchange: e => { g.hidden = !e.target.checked; save(); } }),
-        'Show on Stopwatch tab')));
+      h('div', { class: 'flex', style: 'margin-top:10px;' },
+        h('label', { class: 'flex label grow' },
+          h('input', { type: 'checkbox', checked: !g.hidden, onchange: e => { g.hidden = !e.target.checked; save(); } }),
+          'Show on Stopwatch tab'),
+        h('button', { class: 'small', onclick: () => applyGroup(g.id) }, 'Load on Stopwatch'))));
   }
   if (!list.children.length) {
     list.append(h('div', { class: 'sub' }, state.groups.length ? 'No group matches the search.' : 'No groups yet.'));
