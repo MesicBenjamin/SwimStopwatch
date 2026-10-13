@@ -66,7 +66,8 @@ happens once; swimmers deleted later do not come back.
   marks a *split* inside the running swim, for example every 100 m, while the
   swim keeps timing. Stop also closes the last split, so 20 splits take 19
   taps of Split and one of Stop. While running, the big number is the whole
-  swim so far and the small line shows the current and previous split.
+  swim so far and the small line shows the split number and the previous
+  split's time.
 - **Bottom bar** - **Start all** starts everyone at the same instant.
   **Start selected** starts only the swimmers whose tick box (left of each
   row) is ticked, then clears the ticks so the next wave can be ticked.

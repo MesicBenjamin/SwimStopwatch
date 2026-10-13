@@ -438,13 +438,12 @@ function renderWatch() {
     const swims = s ? s.swims.filter(x => x.swimmerId === id) : [];
     let info, time = null;
     if (run) {
-      // big number = whole swim so far; small line = the split in progress
+      // big number = whole swim so far; small line = which split is in
+      // progress and how long the previous one took
       const marks = run.marks;
       const splitStart = marks.length ? marks[marks.length - 1] : run.start;
-      const cur = h('span', null, fmt(Date.now() - splitStart));
-      cur.dataset.run = splitStart;
       const prev = marks.length ? ` · prev ${fmt(splitStart - (marks.length > 1 ? marks[marks.length - 2] : run.start))}` : '';
-      info = h('div', { class: 'label' }, `Split ${marks.length + 1} · `, cur, prev);
+      info = h('div', { class: 'label' }, `Split ${marks.length + 1}${prev}`);
       time = h('div', { class: 'time' }, fmt(Date.now() - run.start));
       time.dataset.run = run.start;
     } else {
