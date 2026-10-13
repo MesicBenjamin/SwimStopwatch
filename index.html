@@ -623,7 +623,7 @@ function renderSwimmers() {
       const n = Object.keys(state.running).length;
       if (n && !confirm(`${n} running timer${n === 1 ? '' : 's'} will be discarded. Continue?`)) return;
       setDeck([]); save(); render();
-    } }, 'Untick all'),
+    } }, 'Unselect all'),
     h('div', { class: 'card flex' },
       h('input', { type: 'text', id: 'newName', placeholder: 'Swimmer name', onkeydown: e => { if (e.key === 'Enter') addSwimmer(); } }),
       h('button', { onclick: addSwimmer }, 'Add')),
