@@ -68,7 +68,8 @@ happens once; swimmers deleted later do not come back.
   taps of Split and one of Stop. While running, the big number is the whole
   swim so far and the small line shows the split number and the previous
   split's time.
-- **Bottom bar** - **Start all** starts everyone at the same instant.
+- **Bottom bar** (hidden by default, switched on in the menu) - **Start
+  all** starts everyone at the same instant.
   **Start selected** starts only the swimmers whose tick box (left of each
   row) is ticked, then clears the ticks so the next wave can be ticked.
   **Stop all** ends everyone's swim.
@@ -86,7 +87,9 @@ happens once; swimmers deleted later do not come back.
 
 ### Menu (☰, next to the title)
 
-Holds the **session**: its name, **New** to start a named session and
+Holds the **Group start and stop** switch, which shows or hides the bottom
+bar and the tick boxes on the Stopwatch tab (off by default), and the
+**session**: its name, **New** to start a named session and
 **End** to close it. The active session's name is shown in the header. If no
 session is active, one is created automatically when the first swim is
 stopped, so a timed swim is never lost.
