@@ -72,6 +72,7 @@
   .lap { user-select: none; -webkit-user-select: none; border: 1px solid transparent; }
   .lap.running { background: #14532d; border-color: #22c55e; }
   .time { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+  .splittime { font-size: 15px; font-weight: 600; color: #86efac; font-variant-numeric: tabular-nums; text-align: right; }
   /* The two per-swimmer buttons: equal width, big enough to hit poolside */
   .swimbtns { display: flex; gap: 10px; margin-top: 10px; }
   .swimbtns > button { flex: 1 1 0; min-height: 56px; font-size: 17px; font-weight: 600; }
@@ -476,8 +477,16 @@ function renderWatch() {
       const splitStart = marks.length ? marks[marks.length - 1] : run.start;
       const prev = marks.length ? ` · prev ${fmt(splitStart - (marks.length > 1 ? marks[marks.length - 2] : run.start))}` : '';
       info = h('div', { class: 'label' }, `Split ${marks.length + 1}${prev}`);
-      time = h('div', { class: 'time' }, fmt(Date.now() - run.start));
-      time.dataset.run = run.start;
+      const total = h('div', { class: 'time' }, fmt(Date.now() - run.start));
+      total.dataset.run = run.start;
+      // after the first Split tap, a live timer of the split in progress
+      // sits under the total
+      let cur = null;
+      if (marks.length) {
+        cur = h('div', { class: 'splittime' }, fmt(Date.now() - splitStart));
+        cur.dataset.run = splitStart;
+      }
+      time = h('div', null, total, cur);
     } else {
       const last = swims[swims.length - 1];
       info = h('div', { class: 'label' }, last
